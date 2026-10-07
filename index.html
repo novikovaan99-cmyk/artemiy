@@ -765,9 +765,20 @@
   GIFTS.forEach(g => g.items.forEach(([id, title, url]) => giftById[id] = { id, title, url }));
   const wishReady = !!(WISH.formUrl && WISH.giftField && WISH.sheetId);
 
+  // «Мои подарки» помнит только этот браузер; запись = {id, at}
   const store = {
-    get() { try { return JSON.parse(localStorage.getItem("artemiy-gifts") || "[]"); } catch (e) { return []; } },
-    add(ids) { try { const a = store.get(); ids.forEach(id => { if (!a.includes(id)) a.push(id); }); localStorage.setItem("artemiy-gifts", JSON.stringify(a)); } catch (e) {} },
+    raw() {
+      try {
+        return JSON.parse(localStorage.getItem("artemiy-gifts") || "[]")
+          .map(x => typeof x === "string" ? { id: x, at: 0 } : x);
+      } catch (e) { return []; }
+    },
+    save(a) { try { localStorage.setItem("artemiy-gifts", JSON.stringify(a)); } catch (e) {} },
+    get() { return store.raw().map(x => x.id); },
+    add(ids) { const a = store.raw(); ids.forEach(id => { if (!a.some(x => x.id === id)) a.push({ id, at: Date.now() }); }); store.save(a); },
+    // если строку удалили из таблицы, подарок возвращается и в этом браузере
+    // (свежие выборы не трогаем 5 минут, пока таблица их не покажет)
+    syncWith(takenSet) { store.save(store.raw().filter(x => takenSet.has(x.id) || Date.now() - x.at < 5 * 60 * 1000)); },
   };
   let taken = new Set();
   const picked = new Set();
@@ -839,6 +850,7 @@
             if (typeof v === "string") (v.match(/g\d{2}/g) || []).forEach(id => next.add(id));
           });
           taken = next;
+          store.syncWith(next);
           done(true);
         } catch (e) { done(false); }
       };
