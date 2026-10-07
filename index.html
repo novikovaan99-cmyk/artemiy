@@ -500,6 +500,13 @@
 </main>
 
 <script>
+  // Приглашение всегда открывается с начала: без прыжка к якорю и без восстановления прокрутки
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  if (location.hash) { try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
+  window.scrollTo(0, 0);
+  window.addEventListener("load", () => window.scrollTo(0, 0));
+  window.addEventListener("pageshow", e => { if (e.persisted) window.scrollTo(0, 0); });
+
   const INVITE = {
     telegram: "sorokina_an99",
     start: "2026-10-18T16:00:00+03:00",
