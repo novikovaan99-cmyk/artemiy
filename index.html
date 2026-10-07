@@ -54,7 +54,7 @@
     background: var(--card);
     border-radius: 32px;
     box-shadow: 0 1px 0 rgba(28,45,82,.04), 0 24px 60px -24px rgba(28,45,82,.28);
-    overflow: hidden;
+    overflow: hidden; overflow: clip;
   }
   .block { padding: 40px 28px; }
   .block + .block { border-top: 1.5px dashed var(--line); }
@@ -283,17 +283,28 @@
   .take:hover { background: var(--apricot); color: #fff; }
   .take:active { transform: scale(.94); }
   .take:focus-visible { outline: 3px solid var(--apricot); outline-offset: 2px; }
-  .confirm { display: grid; gap: 10px; padding: 2px 0 14px; animation: openUp .25s ease-out; }
-  .confirm p { font-size: 15px; color: var(--ink-soft); }
-  .confirm .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .confirm input { flex: 1 1 160px; min-width: 0; padding: 10px 12px; font-size: 16px; }
-  .confirm .btn { padding: 10px 16px; font-size: 15px; }
-  .confirm .btn.go { background: var(--apricot); border-color: var(--apricot); color: #fff; }
-  .confirm .btn.go:hover { background: #E2763A; border-color: #E2763A; }
-  .confirm .btn.ghost { border-color: transparent; color: var(--ink-soft); }
-  .confirm .btn.ghost:hover { background: var(--sky-pale); color: var(--ink); }
-  .confirm .warn { color: #C4472A; font-size: 14px; }
-  .confirm .warn:empty { display: none; }
+  .take { display: inline-flex; align-items: center; gap: 5px; min-width: 96px; justify-content: center; }
+  .take svg { width: 14px; height: 14px; }
+  .gift.on .take { background: var(--apricot); color: #fff; }
+  .gift.on .gift-row a { color: var(--ink); text-decoration-color: var(--apricot); }
+  .take.pop { animation: takePop .35s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes takePop { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  .pick {
+    position: sticky; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 5;
+    margin-top: 20px; padding: 14px; border-radius: 20px;
+    background: var(--ink); color: var(--card);
+    box-shadow: 0 16px 40px -16px rgba(28,45,82,.6);
+    display: grid; gap: 10px; animation: openUp .25s ease-out;
+  }
+  .pick-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .pick-head b { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+  .pick-head button { background: none; border: 0; padding: 0; font: 600 14px var(--font-body); color: var(--sky); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+  .pick .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pick input[type="text"] { flex: 1 1 150px; min-width: 0; padding: 10px 12px; font-size: 16px; border-color: transparent; }
+  .pick .btn { padding: 10px 18px; font-size: 15px; background: var(--apricot); border-color: var(--apricot); color: #fff; }
+  .pick .btn:hover { background: #E2763A; border-color: #E2763A; }
+  .pick .warn { font-size: 14px; color: var(--butter); }
+  .pick .warn:empty { display: none; }
   @keyframes openUp { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
   .mine {
     margin-top: 22px; padding: 14px 16px; border-radius: 16px; background: #FCE7B4;
@@ -467,9 +478,17 @@
   <!-- ——— Вишлист ——— -->
   <section class="block wish" id="wishlist">
     <h2>Вишлист</h2>
-    <p class="sub">Если хотите порадовать меня подарком, выберите что-нибудь из списка. Выбранный подарок исчезнет из списка, чтобы подарки не повторялись.</p>
+    <p class="sub">Если хотите порадовать меня подарком, отметьте в списке один или несколько и подтвердите выбор. Выбранные подарки исчезнут из списка, чтобы они не повторялись.</p>
     <p class="left" id="gifts-left"></p>
     <div id="gifts"></div>
+    <div class="pick" id="pick" hidden>
+      <div class="pick-head"><b id="pick-count"></b><button type="button" id="pick-clear">Сбросить</button></div>
+      <div class="row">
+        <input type="text" id="pick-name" placeholder="Ваше имя" aria-label="Ваше имя" autocomplete="name">
+        <button class="btn" id="pick-go" type="button">Подтвердить</button>
+      </div>
+      <p class="warn" id="pick-warn" role="status"></p>
+    </div>
     <p class="wish-empty" id="gifts-empty" hidden>Все подарки уже выбрали. Спасибо!</p>
     <div class="mine" id="mine" hidden></div>
   </section>
@@ -748,18 +767,27 @@
 
   const store = {
     get() { try { return JSON.parse(localStorage.getItem("artemiy-gifts") || "[]"); } catch (e) { return []; } },
-    add(id) { try { const a = store.get(); if (!a.includes(id)) a.push(id); localStorage.setItem("artemiy-gifts", JSON.stringify(a)); } catch (e) {} },
+    add(ids) { try { const a = store.get(); ids.forEach(id => { if (!a.includes(id)) a.push(id); }); localStorage.setItem("artemiy-gifts", JSON.stringify(a)); } catch (e) {} },
   };
   let taken = new Set();
+  const picked = new Set();
   const giftsBox = document.getElementById("gifts");
+  const pick = document.getElementById("pick");
+  const pickName = document.getElementById("pick-name");
+  const pickGo = document.getElementById("pick-go");
+  const pickWarn = document.getElementById("pick-warn");
   const ARROW = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 2h6v6M10 2 3 9"/></svg>';
+  const CHECK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>';
+
+  function isGone(id) { return taken.has(id) || store.get().includes(id); }
 
   function renderGifts() {
     const mine = store.get();
+    [...picked].forEach(id => { if (isGone(id)) picked.delete(id); });
     giftsBox.innerHTML = "";
     let left = 0;
     GIFTS.forEach(g => {
-      const items = g.items.filter(([id]) => !taken.has(id) && !mine.includes(id));
+      const items = g.items.filter(([id]) => !isGone(id));
       if (!items.length) return;
       left += items.length;
       const sec = document.createElement("div");
@@ -767,9 +795,11 @@
       sec.innerHTML = `<h3>${g.group}</h3><ul class="gifts"></ul>`;
       const ul = sec.querySelector("ul");
       items.forEach(([id, title, url]) => {
+        const on = picked.has(id);
         const li = document.createElement("li");
-        li.className = "gift"; li.dataset.id = id;
-        li.innerHTML = `<div class="gift-row"><a href="${url}" target="_blank" rel="noopener">${title}${ARROW}</a><button class="take" type="button">Подарю</button></div>`;
+        li.className = "gift" + (on ? " on" : ""); li.dataset.id = id;
+        li.innerHTML = `<div class="gift-row"><a href="${url}" target="_blank" rel="noopener">${title}${ARROW}</a>` +
+          `<button class="take" type="button" aria-pressed="${on}">${on ? CHECK + "Выбрано" : "Подарю"}</button></div>`;
         ul.appendChild(li);
       });
       giftsBox.appendChild(sec);
@@ -779,7 +809,16 @@
     const mineBox = document.getElementById("mine");
     const titles = mine.map(id => giftById[id] && giftById[id].title).filter(Boolean);
     mineBox.hidden = !titles.length;
-    if (titles.length) mineBox.innerHTML = `<b>Вы выбрали: ${titles.join(", ")}</b><span>Спасибо! Если передумаете, напишите нам в Telegram.</span>`;
+    if (titles.length) mineBox.innerHTML = `<b>Вы дарите: ${titles.join(", ")}</b><span>Спасибо! Если передумаете, напишите нам в Telegram.</span>`;
+    updatePick();
+  }
+
+  function updatePick() {
+    const n = picked.size;
+    pick.hidden = n === 0;
+    if (!n) { pickWarn.textContent = ""; return; }
+    document.getElementById("pick-count").textContent = `Вы выбрали ${n} ${plural(n, "подарок", "подарка", "подарков")}`;
+    if (!pickName.value) pickName.value = document.getElementById("guest").value.trim();
   }
 
   // читаем таблицу выбранных подарков через JSONP (работает без своего сервера)
@@ -797,8 +836,7 @@
           const next = new Set();
           res.table.rows.forEach(r => {
             const v = r.c && r.c[gi] && r.c[gi].v;
-            const m = typeof v === "string" && v.match(/g\d{2}/);
-            if (m) next.add(m[0]);
+            if (typeof v === "string") (v.match(/g\d{2}/g) || []).forEach(id => next.add(id));
           });
           taken = next;
           done(true);
@@ -811,66 +849,71 @@
     });
   }
 
-  function removeRow(li) {
-    const h = li.offsetHeight;
-    if (reduceMotion || !li.animate) { renderGifts(); return; }
-    li.animate([
-      { height: h + "px", opacity: 1, transform: "none" },
-      { height: h + "px", opacity: 0, transform: "translateX(40px)", offset: .5 },
-      { height: "0px", opacity: 0, transform: "translateX(40px)" },
-    ], { duration: 550, easing: "ease-in-out", fill: "forwards" }).onfinish = renderGifts;
+  function removeRows(lis, then) {
+    if (reduceMotion || !lis.length || !lis[0].animate) { then(); return; }
+    let left = lis.length;
+    lis.forEach((li, i) => {
+      const h = li.offsetHeight;
+      li.animate([
+        { height: h + "px", opacity: 1, transform: "none" },
+        { height: h + "px", opacity: 0, transform: "translateX(40px)", offset: .5 },
+        { height: "0px", opacity: 0, transform: "translateX(40px)" },
+      ], { duration: 550, delay: i * 90, easing: "ease-in-out", fill: "forwards" }).onfinish = () => { if (--left === 0) then(); };
+    });
   }
 
-  giftsBox.addEventListener("click", async e => {
-    const li = e.target.closest(".gift"); if (!li) return;
-    const id = li.dataset.id;
+  giftsBox.addEventListener("click", e => {
+    const btn = e.target.closest(".take"); if (!btn) return;
+    const li = btn.closest(".gift"), id = li.dataset.id;
+    if (picked.has(id)) picked.delete(id); else picked.add(id);
+    const on = picked.has(id);
+    li.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", on);
+    btn.innerHTML = on ? CHECK + "Выбрано" : "Подарю";
+    btn.classList.remove("pop"); void btn.offsetWidth; btn.classList.add("pop");
+    pickWarn.textContent = "";
+    updatePick();
+  });
 
-    if (e.target.closest(".take")) {
-      giftsBox.querySelectorAll(".confirm").forEach(c => c.remove());
-      const guestName = document.getElementById("guest").value.trim();
-      const box = document.createElement("div");
-      box.className = "confirm";
-      box.innerHTML = `<p>Как вас зовут? Так мы будем знать, кого благодарить :)</p>
-        <div class="row"><input type="text" placeholder="Ваше имя" aria-label="Ваше имя">
-        <button class="btn go" type="button">Подарю!</button><button class="btn ghost" type="button">Отмена</button></div>
-        <p class="warn" role="status"></p>`;
-      box.querySelector("input").value = guestName;
-      li.appendChild(box);
-      (guestName ? box.querySelector(".go") : box.querySelector("input")).focus();
+  document.getElementById("pick-clear").addEventListener("click", () => { picked.clear(); renderGifts(); });
+
+  pickGo.addEventListener("click", async () => {
+    const name = pickName.value.trim();
+    if (!name) { pickWarn.textContent = "Напишите, пожалуйста, ваше имя"; pickName.focus(); return; }
+    if (!wishReady) { pickWarn.textContent = "Вишлист ещё настраивается, загляните чуть позже"; return; }
+    pickGo.disabled = true; pickGo.textContent = "Секунду…";
+    await loadTaken();
+    const gone = [...picked].filter(id => taken.has(id));
+    if (gone.length) {
+      pickGo.disabled = false; pickGo.textContent = "Подтвердить";
+      const names = gone.map(id => giftById[id].title).join(", ");
+      renderGifts();
+      pickWarn.textContent = `${names}: ${gone.length > 1 ? "эти подарки" : "этот подарок"} только что выбрал кто-то другой. ${picked.size ? "Остальное подтвердите ещё раз." : "Посмотрите другие!"}`;
       return;
     }
-    if (e.target.closest(".ghost")) { li.querySelector(".confirm").remove(); return; }
-    if (e.target.closest(".go")) {
-      const box = li.querySelector(".confirm"), warn = box.querySelector(".warn"), go = e.target.closest(".go");
-      const name = box.querySelector("input").value.trim();
-      if (!name) { warn.textContent = "Напишите, пожалуйста, имя"; box.querySelector("input").focus(); return; }
-      if (!wishReady) { warn.textContent = "Вишлист ещё настраивается, загляните чуть позже"; return; }
-      go.disabled = true; go.textContent = "Секунду…";
-      await loadTaken();
-      if (taken.has(id)) {
-        warn.textContent = "Ой, этот подарок только что выбрали. Посмотрите другие!";
-        setTimeout(() => removeRow(li), 1400);
-        return;
-      }
-      const body = new URLSearchParams();
-      body.append(WISH.giftField, `${id} · ${giftById[id].title}`);
-      if (WISH.nameField) body.append(WISH.nameField, name);
-      try {
-        await fetch(WISH.formUrl, { method: "POST", mode: "no-cors", body });
-        store.add(id);
-        const r = li.getBoundingClientRect();
-        burst(r.left + r.width / 2, r.top + 20, 80);
-        removeRow(li);
-      } catch (err) {
-        go.disabled = false; go.textContent = "Подарю!";
-        warn.textContent = "Не получилось отправить. Проверьте интернет и попробуйте ещё раз.";
-      }
+    const ids = [...picked];
+    const body = new URLSearchParams();
+    body.append(WISH.giftField, ids.map(id => `${id} · ${giftById[id].title}`).join(", "));
+    if (WISH.nameField) body.append(WISH.nameField, name);
+    try {
+      await fetch(WISH.formUrl, { method: "POST", mode: "no-cors", body });
+      const lis = ids.map(id => giftsBox.querySelector(`.gift[data-id="${id}"]`)).filter(Boolean);
+      const r = pick.getBoundingClientRect();
+      burst(innerWidth / 2, r.top, 120);
+      store.add(ids);
+      picked.clear();
+      pick.hidden = true;
+      removeRows(lis, renderGifts);
+    } catch (err) {
+      pickWarn.textContent = "Не получилось отправить. Проверьте интернет и попробуйте ещё раз.";
+    } finally {
+      pickGo.disabled = false; pickGo.textContent = "Подтвердить";
     }
   });
 
   renderGifts();
   loadTaken().then(ok => { if (ok) renderGifts(); });
-  setInterval(() => { if (!giftsBox.querySelector(".confirm")) loadTaken().then(ok => { if (ok) renderGifts(); }); }, 60000);
+  setInterval(() => loadTaken().then(ok => { if (ok) renderGifts(); }), 60000);
 </script>
 
 </body>
